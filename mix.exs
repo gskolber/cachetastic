@@ -5,9 +5,17 @@ defmodule Cachetastic.MixProject do
     [
       app: :cachetastic,
       version: "0.1.0",
-      elixir: "~> 1.16",
+      elixir: "~> 1.11",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      name: "Cachetastic",
+      source_url: "https://github.com/gskolber/cachetastic",
+      homepage_url: "https://github.com/gskolber/cachetastic",
+      docs: [
+        # The main page in the docs
+        main: "Cachetastic",
+        extras: ["README.md"]
+      ]
     ]
   end
 

@@ -59,6 +59,82 @@ Cachetastic.delete("key")
 Cachetastic.clear()
 ```
 
+### Example Implementation
+
+Here's an example of how you can integrate Cachetastic into your own Elixir application:
+
+#### Step 1: Add Cachetastic to Your Dependencies
+
+Update your `mix.exs` file to include Cachetastic as a dependency:
+
+```elixir
+defp deps do
+  [
+    {:cachetastic, "~> 0.1.0"}
+  ]
+end
+```
+
+Run `mix deps.get` to fetch the dependencies.
+
+#### Step 2: Configure Cachetastic
+
+Add the configuration for Cachetastic in your `config/config.exs` file:
+
+```elixir
+use Mix.Config
+
+config :cachetastic,
+  backends: [
+    ets: [ttl: 600],
+    redis: [host: "localhost", port: 6379, ttl: 3600]
+  ],
+  fault_tolerance: [primary: :redis, backup: :ets]
+```
+
+#### Step 3: Use Cachetastic in Your Application
+
+In your application module, start Cachetastic and use it to perform caching operations:
+
+```elixir
+defmodule MyApp.Application do
+  use Application
+
+  def start(_type, _args) do
+    children = [
+      # Start the Cachetastic cache
+      {Cachetastic, []}
+    ]
+
+    opts = [strategy: :one_for_one, name: MyApp.Supervisor]
+    Supervisor.start_link(children, opts)
+  end
+end
+```
+
+Now you can use Cachetastic to perform caching operations anywhere in your application:
+
+```elixir
+defmodule MyApp.SomeModule do
+  def some_function do
+    # Put a value in the cache
+    Cachetastic.put("my_key", "my_value")
+
+    # Get a value from the cache
+    case Cachetastic.get("my_key") do
+      {:ok, value} -> IO.puts("Got value: #{value}")
+      :error -> IO.puts("Key not found")
+    end
+
+    # Delete a value from the cache
+    Cachetastic.delete("my_key")
+
+    # Clear the entire cache
+    Cachetastic.clear()
+  end
+end
+```
+
 ### Contribution
 
 Feel free to open issues and pull requests. We appreciate your contributions!
