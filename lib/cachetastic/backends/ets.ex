@@ -1,7 +1,7 @@
 defmodule Cachetastic.Backend.ETS do
   @behaviour Cachetastic.Behaviour
 
-  def start_link(_) do
+  def start_link(_opts) do
     :ets.new(:cachetastic, [:named_table, :public, :set])
     {:ok, self()}
   end

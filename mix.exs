@@ -22,6 +22,7 @@ defmodule Cachetastic.MixProject do
   defp deps do
     [
       {:redix, "~> 1.0"},
+      {:mox, "~> 1.0", only: :test},
       {:ex_doc, "~> 0.23", only: :dev, runtime: false}
     ]
   end

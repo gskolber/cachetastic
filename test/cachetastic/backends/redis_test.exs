@@ -3,7 +3,7 @@ defmodule Cachetastic.Backend.RedisTest do
   alias Cachetastic.Backend.Redis
 
   setup do
-    {:ok, conn} = Redis.start_link(host: "localhost")
+    {:ok, conn} = Redis.start_link(host: "localhost", port: 6379)
     {:ok, redis: conn}
   end
 
