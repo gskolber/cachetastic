@@ -1,30 +1,40 @@
 defmodule Cachetastic.Backend.ETS do
   @behaviour Cachetastic.Behaviour
 
-  def start_link(_opts) do
-    :ets.new(:cachetastic, [:named_table, :public, :set])
-    {:ok, self()}
+  def start_link(opts) do
+    table_name = Keyword.get(opts, :table_name, :cachetastic)
+    ttl = Keyword.get(opts, :ttl, 600)
+
+    if :ets.info(table_name) == :undefined do
+      :ets.new(table_name, [:named_table, :public, :set])
+    end
+
+    {:ok,
+     %{
+       table_name: table_name,
+       ttl: ttl
+     }}
   end
 
-  def put(_pid, key, value, _ttl \\ nil) do
-    :ets.insert(:cachetastic, {key, value})
+  def put(state, key, value, _ttl \\ nil) do
+    :ets.insert(state.table_name, {key, value})
     :ok
   end
 
-  def get(_pid, key) do
-    case :ets.lookup(:cachetastic, key) do
+  def get(state, key) do
+    case :ets.lookup(state.table_name, key) do
       [{^key, value}] -> {:ok, value}
       _ -> :error
     end
   end
 
-  def delete(_pid, key) do
-    :ets.delete(:cachetastic, key)
+  def delete(state, key) do
+    :ets.delete(state.table_name, key)
     :ok
   end
 
-  def clear(_pid) do
-    :ets.delete_all_objects(:cachetastic)
+  def clear(state) do
+    :ets.delete_all_objects(state.table_name)
     :ok
   end
 end

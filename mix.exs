@@ -14,7 +14,7 @@ defmodule Cachetastic.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger]
+      extra_applications: [:logger, :patch]
     ]
   end
 
@@ -22,7 +22,7 @@ defmodule Cachetastic.MixProject do
   defp deps do
     [
       {:redix, "~> 1.0"},
-      {:mox, "~> 1.0", only: :test},
+      {:patch, "~> 0.12.0", only: :test},
       {:ex_doc, "~> 0.23", only: :dev, runtime: false}
     ]
   end

@@ -3,7 +3,6 @@ defmodule Cachetastic do
   Cachetastic main module for interacting with the cache.
   """
 
-  alias Cachetastic.Backend
   alias Cachetastic.Config
   alias Cachetastic.FaultTolerance
 
@@ -16,12 +15,12 @@ defmodule Cachetastic do
     primary_backend = Config.primary_backend()
     backup_backend = Config.backup_backend()
 
-    {:ok, primary_pid} = Config.start_backend(primary_backend)
-    {:ok, backup_pid} = Config.start_backend(backup_backend)
+    {:ok, primary_state} = Config.start_backend(primary_backend)
+    {:ok, backup_state} = Config.start_backend(backup_backend)
 
     FaultTolerance.with_fallback(
-      fn -> apply(Backend, primary_backend).put(primary_pid, key, value, ttl) end,
-      fn -> apply(Backend, backup_backend).put(backup_pid, key, value, ttl) end
+      fn -> apply(module_for(primary_backend), :put, [primary_state, key, value, ttl]) end,
+      fn -> apply(module_for(backup_backend), :put, [backup_state, key, value, ttl]) end
     )
   end
 
@@ -29,12 +28,12 @@ defmodule Cachetastic do
     primary_backend = Config.primary_backend()
     backup_backend = Config.backup_backend()
 
-    {:ok, primary_pid} = Config.start_backend(primary_backend)
-    {:ok, backup_pid} = Config.start_backend(backup_backend)
+    {:ok, primary_state} = Config.start_backend(primary_backend)
+    {:ok, backup_state} = Config.start_backend(backup_backend)
 
     FaultTolerance.with_fallback(
-      fn -> apply(Backend, primary_backend).get(primary_pid, key) end,
-      fn -> apply(Backend, backup_backend).get(backup_pid, key) end
+      fn -> apply(module_for(primary_backend), :get, [primary_state, key]) end,
+      fn -> apply(module_for(backup_backend), :get, [backup_state, key]) end
     )
   end
 
@@ -42,12 +41,12 @@ defmodule Cachetastic do
     primary_backend = Config.primary_backend()
     backup_backend = Config.backup_backend()
 
-    {:ok, primary_pid} = Config.start_backend(primary_backend)
-    {:ok, backup_pid} = Config.start_backend(backup_backend)
+    {:ok, primary_state} = Config.start_backend(primary_backend)
+    {:ok, backup_state} = Config.start_backend(backup_backend)
 
     FaultTolerance.with_fallback(
-      fn -> apply(Backend, primary_backend).delete(primary_pid, key) end,
-      fn -> apply(Backend, backup_backend).delete(backup_pid, key) end
+      fn -> apply(module_for(primary_backend), :delete, [primary_state, key]) end,
+      fn -> apply(module_for(backup_backend), :delete, [backup_state, key]) end
     )
   end
 
@@ -55,12 +54,15 @@ defmodule Cachetastic do
     primary_backend = Config.primary_backend()
     backup_backend = Config.backup_backend()
 
-    {:ok, primary_pid} = Config.start_backend(primary_backend)
-    {:ok, backup_pid} = Config.start_backend(backup_backend)
+    {:ok, primary_state} = Config.start_backend(primary_backend)
+    {:ok, backup_state} = Config.start_backend(backup_backend)
 
     FaultTolerance.with_fallback(
-      fn -> apply(Backend, primary_backend).clear(primary_pid) end,
-      fn -> apply(Backend, backup_backend).clear(backup_pid) end
+      fn -> apply(module_for(primary_backend), :clear, [primary_state]) end,
+      fn -> apply(module_for(backup_backend), :clear, [backup_state]) end
     )
   end
+
+  defp module_for(:redis), do: Cachetastic.Backend.Redis
+  defp module_for(:ets), do: Cachetastic.Backend.ETS
 end

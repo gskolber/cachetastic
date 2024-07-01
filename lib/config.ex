@@ -14,9 +14,6 @@ defmodule Cachetastic.Config do
     Cachetastic.Backend.ETS.start_link(config)
   end
 
-  def start_backend(:primary_mock), do: Cachetastic.PrimaryMock.start_link([])
-  def start_backend(:backup_mock), do: Cachetastic.BackupMock.start_link([])
-
   @spec primary_backend() :: atom()
   def primary_backend do
     Application.get_env(:cachetastic, :fault_tolerance)[:primary]
