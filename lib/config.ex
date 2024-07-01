@@ -3,7 +3,6 @@ defmodule Cachetastic.Config do
   Handles configuration and backend initialization for Cachetastic.
   """
 
-  @spec start_backend(atom()) :: {:ok, pid()} | {:error, any()}
   def start_backend(:redis) do
     config = Application.get_env(:cachetastic, :backends)[:redis]
     Cachetastic.Backend.Redis.start_link(config)
@@ -14,12 +13,12 @@ defmodule Cachetastic.Config do
     Cachetastic.Backend.ETS.start_link(config)
   end
 
-  @spec primary_backend() :: atom()
+  def start_backend(_), do: {:error, "Unsupported backend"}
+
   def primary_backend do
     Application.get_env(:cachetastic, :fault_tolerance)[:primary]
   end
 
-  @spec backup_backend() :: atom()
   def backup_backend do
     Application.get_env(:cachetastic, :fault_tolerance)[:backup]
   end
