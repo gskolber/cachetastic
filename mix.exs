@@ -4,7 +4,7 @@ defmodule Cachetastic.MixProject do
   def project do
     [
       app: :cachetastic,
-      version: "0.1.2",
+      version: "0.1.3",
       elixir: "~> 1.11",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
@@ -30,9 +30,7 @@ defmodule Cachetastic.MixProject do
   defp deps do
     [
       {:redix, "~> 1.0"},
-      # Patch is used only for tests, not needed at runtime
       {:patch, "~> 0.12.0", only: :test, runtime: false},
-      # ExDoc is used only for documentation generation
       {:ex_doc, "~> 0.23", only: :dev, runtime: false}
     ]
   end
