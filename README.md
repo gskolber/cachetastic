@@ -19,8 +19,6 @@ def deps do
   [
     {:cachetastic, "~> 0.1.0"},
     {:redix, "~> 1.0"},
-    {:patch, "~> 0.12.0", only: :test},
-    {:ex_doc, "~> 0.23", only: :dev, runtime: false}
   ]
 end
 ```
