@@ -8,6 +8,7 @@ defmodule Cachetastic.MixProject do
       elixir: "~> 1.11",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
+      package: package(),
       name: "Cachetastic",
       source_url: "https://github.com/gskolber/cachetastic",
       homepage_url: "https://github.com/gskolber/cachetastic",
@@ -32,6 +33,14 @@ defmodule Cachetastic.MixProject do
       {:redix, "~> 1.0"},
       {:patch, "~> 0.12.0", only: :test},
       {:ex_doc, "~> 0.23", only: :dev, runtime: false}
+    ]
+  end
+
+  defp package do
+    [
+      maintainers: ["Gabriel Kolber"],
+      licenses: ["MIT"],
+      links: %{"GitHub" => "https://github.com/gskolber/cachetastic"}
     ]
   end
 end
