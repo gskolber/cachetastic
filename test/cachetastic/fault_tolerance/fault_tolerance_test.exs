@@ -31,7 +31,7 @@ defmodule Cachetastic.FaultToleranceTest do
 
     ETS.put(ets_pid, "key", "value")
     assert :ok == Cachetastic.delete("key")
-    assert :error == ETS.get(ets_pid, "key")
+    assert {:error, :not_found} == ETS.get(ets_pid, "key")
   end
 
   test "clear falls back to ETS on Redis failure", %{ets_pid: ets_pid} do
@@ -40,7 +40,7 @@ defmodule Cachetastic.FaultToleranceTest do
     ETS.put(ets_pid, "key1", "value1")
     ETS.put(ets_pid, "key2", "value2")
     assert :ok == Cachetastic.clear()
-    assert :error == ETS.get(ets_pid, "key1")
-    assert :error == ETS.get(ets_pid, "key2")
+    assert {:error, :not_found} == ETS.get(ets_pid, "key1")
+    assert {:error, :not_found} == ETS.get(ets_pid, "key2")
   end
 end

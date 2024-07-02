@@ -6,6 +6,7 @@ defmodule Cachetastic.FaultTolerance do
     case with_retries(primary_fun) do
       result = :ok -> result
       result = {:ok, _} -> result
+      result = {:error, :not_found} -> result
       _error -> with_retries(backup_fun)
     end
   end
@@ -20,6 +21,9 @@ defmodule Cachetastic.FaultTolerance do
         result
 
       result = {:ok, _} ->
+        result
+
+      result = {:error, :not_found} ->
         result
 
       _error ->

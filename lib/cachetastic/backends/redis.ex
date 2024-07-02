@@ -33,17 +33,21 @@ defmodule Cachetastic.Backend.Redis do
   @doc """
   Starts the Redis backend with the given options.
   """
+  @impl true
   def start_link(opts) do
-    host = Keyword.get(opts, :host, "localhost")
-    port = Keyword.get(opts, :port, 6379)
+    host = Keyword.fetch!(opts, :host)
+    port = Keyword.fetch!(opts, :port)
     ttl = Keyword.get(opts, :ttl, 3600)
     {:ok, conn} = Redix.start_link(host: host, port: port)
     {:ok, %{conn: conn, ttl: ttl}}
+  rescue
+    KeyError -> raise ArgumentError, "Both :host and :port must be provided in options"
   end
 
   @doc """
   Puts a value in the Redis cache.
   """
+  @impl true
   def put(state, key, value, ttl \\ nil) do
     ttl = ttl || state.ttl
 
@@ -56,9 +60,10 @@ defmodule Cachetastic.Backend.Redis do
   @doc """
   Gets a value from the Redis cache by key.
   """
+  @impl true
   def get(state, key) do
     case Redix.command(state.conn, ["GET", key]) do
-      {:ok, nil} -> :error
+      {:ok, nil} -> {:error, :not_found}
       {:ok, value} -> {:ok, value}
       error -> error
     end
@@ -67,6 +72,7 @@ defmodule Cachetastic.Backend.Redis do
   @doc """
   Deletes a value from the Redis cache by key.
   """
+  @impl true
   def delete(state, key) do
     case Redix.command(state.conn, ["DEL", key]) do
       {:ok, _} -> :ok
@@ -77,6 +83,7 @@ defmodule Cachetastic.Backend.Redis do
   @doc """
   Clears all values from the Redis cache.
   """
+  @impl true
   def clear(state) do
     case Redix.command(state.conn, ["FLUSHDB"]) do
       {:ok, _} -> :ok

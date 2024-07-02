@@ -1,37 +1,35 @@
 defmodule Cachetastic.FaultTolerance.NoFallbackTest do
   use ExUnit.Case
 
-  alias Cachetastic.Backend.ETS
-
   setup do
     # Configuração inicial sem tolerância a falhas, utilizando ETS como backend primário
     Application.put_env(:cachetastic, :fault_tolerance, primary: :ets)
 
-    {:ok, ets_state} = ETS.start_link(table_name: :cachetastic_ets)
-    {:ok, ets_state: ets_state}
+    {:ok, _pid} = Cachetastic.start_link()
+    :ok
   end
 
-  test "put without fallback", %{ets_state: _ets_state} do
+  test "put without fallback" do
     assert :ok == Cachetastic.put("key", "value")
     assert {:ok, "value"} == Cachetastic.get("key")
   end
 
-  test "get without fallback", %{ets_state: _ets_state} do
+  test "get without fallback" do
     Cachetastic.put("key", "value")
     assert {:ok, "value"} == Cachetastic.get("key")
   end
 
-  test "delete without fallback", %{ets_state: ets_state} do
+  test "delete without fallback" do
     Cachetastic.put("key", "value")
     assert :ok == Cachetastic.delete("key")
-    assert :error == ETS.get(ets_state, "key")
+    assert {:error, :not_found} == Cachetastic.get("key")
   end
 
-  test "clear without fallback", %{ets_state: ets_state} do
+  test "clear without fallback" do
     Cachetastic.put("key1", "value1")
     Cachetastic.put("key2", "value2")
     assert :ok == Cachetastic.clear()
-    assert :error == ETS.get(ets_state, "key1")
-    assert :error == ETS.get(ets_state, "key2")
+    assert {:error, :not_found} == Cachetastic.get("key1")
+    assert {:error, :not_found} == Cachetastic.get("key2")
   end
 end

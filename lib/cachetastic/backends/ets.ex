@@ -32,6 +32,7 @@ defmodule Cachetastic.Backend.ETS do
   @doc """
   Starts the ETS backend with the given options.
   """
+  @impl true
   def start_link(opts) do
     table_name = Keyword.get(opts, :table_name, :cachetastic)
     ttl = Keyword.get(opts, :ttl, 600)
@@ -50,6 +51,7 @@ defmodule Cachetastic.Backend.ETS do
   @doc """
   Puts a value in the ETS cache.
   """
+  @impl true
   def put(state, key, value, _ttl \\ nil) do
     :ets.insert(state.table_name, {key, value})
     :ok
@@ -58,16 +60,18 @@ defmodule Cachetastic.Backend.ETS do
   @doc """
   Gets a value from the ETS cache by key.
   """
+  @impl true
   def get(state, key) do
     case :ets.lookup(state.table_name, key) do
       [{^key, value}] -> {:ok, value}
-      _ -> :error
+      _ -> {:error, :not_found}
     end
   end
 
   @doc """
   Deletes a value from the ETS cache by key.
   """
+  @impl true
   def delete(state, key) do
     :ets.delete(state.table_name, key)
     :ok
@@ -76,6 +80,7 @@ defmodule Cachetastic.Backend.ETS do
   @doc """
   Clears all values from the ETS cache.
   """
+  @impl true
   def clear(state) do
     :ets.delete_all_objects(state.table_name)
     :ok
