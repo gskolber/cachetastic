@@ -30,6 +30,7 @@ defmodule Cachetastic.MixProject do
   defp deps do
     [
       {:redix, "~> 1.0"},
+      {:jason, "~> 1.2"},
       {:patch, "~> 0.12.0", only: :test, runtime: false},
       {:ex_doc, "~> 0.23", only: :dev, runtime: false}
     ]
