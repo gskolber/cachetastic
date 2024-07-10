@@ -36,13 +36,18 @@ defmodule Cachetastic.Config do
   Returns the primary backend configuration.
   """
   def primary_backend do
-    Application.get_env(:cachetastic, :fault_tolerance)[:primary]
+    Application.get_env(:cachetastic, :backends)
+    |> Keyword.get(:fault_tolerance)
+    |> Keyword.fetch!(:primary)
   end
 
   @doc """
   Returns the backup backend configuration.
   """
   def backup_backend do
-    Application.get_env(:cachetastic, :fault_tolerance)[:backup]
+    Application.get_env(:cachetastic, :backends)
+    |> Keyword.get(:fault_tolerance)
+    |> Keyword.fetch(:backup)
+    |> elem(1)
   end
 end

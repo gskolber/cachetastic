@@ -31,8 +31,12 @@ defmodule Cachetastic.MixProject do
     [
       {:redix, "~> 1.0"},
       {:jason, "~> 1.2"},
+      {:ecto, "~> 3.6", only: :test, runtime: false},
+      {:ecto_sql, "~> 3.6", only: :test, runtime: false},
+      {:postgrex, ">= 0.0.0", only: :test, runtime: false},
       {:patch, "~> 0.12.0", only: :test, runtime: false},
-      {:ex_doc, "~> 0.23", only: :dev, runtime: false}
+      {:ex_doc, "~> 0.23", only: :dev, runtime: false},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
   end
 
