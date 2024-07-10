@@ -20,14 +20,18 @@ defmodule Cachetastic.Config do
   @doc """
   Starts the specified backend and returns its state.
   """
+
+  alias Cachetastic.Backend.ETS
+  alias Cachetastic.Backend.Redis
+
   def start_backend(:redis) do
     config = Application.get_env(:cachetastic, :backends)[:redis]
-    Cachetastic.Backend.Redis.start_link(config)
+    Redis.start_link(config)
   end
 
   def start_backend(:ets) do
     config = Application.get_env(:cachetastic, :backends)[:ets]
-    Cachetastic.Backend.ETS.start_link(config)
+    ETS.start_link(config)
   end
 
   def start_backend(_), do: {:error, "Unsupported backend"}
