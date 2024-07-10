@@ -5,7 +5,8 @@ config :cachetastic, Cachetastic.TestRepo,
   password: "postgres",
   database: "my_app_test",
   hostname: "localhost",
-  pool: Ecto.Adapters.SQL.Sandbox
+  pool: Ecto.Adapters.SQL.Sandbox,
+  pool_size: 10
 
 config :cachetastic, ecto_repos: [Cachetastic.TestRepo]
 
