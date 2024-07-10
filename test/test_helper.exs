@@ -1,6 +1,7 @@
 ExUnit.start()
 
 Code.require_file("support/test_schema.ex", __DIR__)
+Code.require_file("support/test_repo.ex", __DIR__)
 
 # Create the database, run migrations, and start the sandbox
 Mix.Task.run("ecto.create", ~w(--quiet))

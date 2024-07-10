@@ -67,6 +67,7 @@ defmodule Cachetastic.Ecto do
   """
 
   alias Jason
+  alias Ecto.Schema.Metadata
 
   @doc """
   Macro to be used in an Ecto repository module to enable caching for Ecto queries.
@@ -156,12 +157,37 @@ defmodule Cachetastic.Ecto do
         struct
         |> Map.from_struct()
         |> Map.put(:__struct__, Atom.to_string(struct.__struct__))
-        |> Map.drop([:__meta__])
+        |> Map.put(:__meta__, meta_to_map(struct.__meta__))
       end
 
       defp map_to_struct(map) do
         struct_module = String.to_existing_atom(map[:__struct__])
-        struct(struct_module, map)
+        meta = map_to_meta(map[:__meta__])
+
+        struct_module
+        |> struct(Map.drop(map, [:__meta__, :__struct__]))
+        |> Map.put(:__meta__, meta)
+        |> Map.put(:__struct__, struct_module)
+      end
+
+      defp meta_to_map(%Metadata{} = meta) do
+        %{
+          state: meta.state,
+          source: meta.source,
+          prefix: meta.prefix,
+          context: meta.context,
+          schema: meta.schema
+        }
+      end
+
+      defp map_to_meta(map) when is_map(map) do
+        %Metadata{
+          state: map[:state] |> String.to_existing_atom(),
+          source: map[:source],
+          prefix: map[:prefix],
+          context: map[:context],
+          schema: map[:schema] |> String.to_existing_atom()
+        }
       end
     end
   end

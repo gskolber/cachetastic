@@ -8,3 +8,5 @@ config :cachetastic, Cachetastic.TestRepo,
   pool: Ecto.Adapters.SQL.Sandbox
 
 config :cachetastic, ecto_repos: [Cachetastic.TestRepo]
+
+config :logger, level: :error
