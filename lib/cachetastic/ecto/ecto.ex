@@ -66,7 +66,6 @@ defmodule Cachetastic.Ecto do
       end
   """
 
-  alias Jason
   alias Ecto.Schema.Metadata
 
   @doc """

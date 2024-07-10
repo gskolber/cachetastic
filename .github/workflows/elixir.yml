@@ -2,26 +2,62 @@ name: Elixir CI
 
 on:
   push:
-    branches: [main]
+    branches: ["master"]
   pull_request:
-    branches: [main]
+    branches: ["master"]
+
+permissions:
+  contents: read
 
 jobs:
-  test:
+  build:
+    name: Build and test
     runs-on: ubuntu-latest
 
-    strategy:
-      matrix:
-        elixir: [1.11.2]
-        otp: [23.0]
+    services:
+      redis:
+        image: redis
+        ports:
+          - 6379:6379
+      postgres:
+        image: postgres:latest
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: my_app_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-elixir@v1
+      - uses: actions/checkout@v4
+      - name: Set up Elixir
+        uses: erlef/setup-beam@61e01a43a562a89bfc54c7f9a378ff67b03e4a21 # v1.16.0
         with:
-          otp-version: ${{ matrix.otp }}
-          elixir-version: ${{ matrix.elixir }}
+          elixir-version: "1.15.2" # Define the Elixir version
+          otp-version: "26.0" # Define the Erlang/OTP version
+      - name: Restore dependencies cache
+        uses: actions/cache@v3
+        with:
+          path: deps
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: ${{ runner.os }}-mix-
       - name: Install dependencies
         run: mix deps.get
+      - name: Run credo
+        run: mix credo --strict
+      - name: Wait for PostgreSQL
+        run: |
+          until pg_isready -h localhost -p 5432; do
+            sleep 1
+          done
       - name: Run tests
         run: mix test
+        env:
+          MIX_ENV: test
+          DATABASE_URL: ecto://postgres:postgres@localhost/my_app_test
+          REDIS_URL: redis://localhost:6379/0
