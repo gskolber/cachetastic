@@ -16,7 +16,7 @@ defmodule Cachetastic.MixProject do
       homepage_url: "https://github.com/gskolber/cachetastic",
       docs: [
         main: "readme",
-        extras: ["README.md"]
+        extras: ["README.md", "docs/ecto.md"]
       ]
     ]
   end
