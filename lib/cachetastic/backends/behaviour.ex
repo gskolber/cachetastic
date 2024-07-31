@@ -1,4 +1,7 @@
 defmodule Cachetastic.Behaviour do
+  @moduledoc """
+  Behaviour for Cachetastic backends.
+  """
   @callback start_link(keyword()) :: {:ok, pid()} | {:error, any()}
   @callback put(pid(), String.t(), any(), integer() | nil) :: :ok | {:error, any()}
   @callback get(pid(), String.t()) :: {:ok, any()} | {:error, :not_found} | {:error, any()}

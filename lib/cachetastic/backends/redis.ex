@@ -29,6 +29,7 @@ defmodule Cachetastic.Backend.Redis do
   """
 
   @behaviour Cachetastic.Behaviour
+  require Logger
 
   @doc """
   Starts the Redis backend with the given options.
@@ -41,7 +42,12 @@ defmodule Cachetastic.Backend.Redis do
     {:ok, conn} = Redix.start_link(host: host, port: port)
     {:ok, %{conn: conn, ttl: ttl}}
   rescue
-    KeyError -> raise ArgumentError, "Both :host and :port must be provided in options"
+    KeyError ->
+      Logger.error("Both :host and :port must be provided in options")
+      reraise(KeyError, __STACKTRACE__)
+
+    exception ->
+      reraise(exception, __STACKTRACE__)
   end
 
   @doc """

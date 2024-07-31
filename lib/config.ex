@@ -20,14 +20,18 @@ defmodule Cachetastic.Config do
   @doc """
   Starts the specified backend and returns its state.
   """
+
+  alias Cachetastic.Backend.ETS
+  alias Cachetastic.Backend.Redis
+
   def start_backend(:redis) do
     config = Application.get_env(:cachetastic, :backends)[:redis]
-    Cachetastic.Backend.Redis.start_link(config)
+    Redis.start_link(config)
   end
 
   def start_backend(:ets) do
     config = Application.get_env(:cachetastic, :backends)[:ets]
-    Cachetastic.Backend.ETS.start_link(config)
+    ETS.start_link(config)
   end
 
   def start_backend(_), do: {:error, "Unsupported backend"}
@@ -36,13 +40,18 @@ defmodule Cachetastic.Config do
   Returns the primary backend configuration.
   """
   def primary_backend do
-    Application.get_env(:cachetastic, :fault_tolerance)[:primary]
+    Application.get_env(:cachetastic, :backends)
+    |> Keyword.get(:fault_tolerance)
+    |> Keyword.fetch!(:primary)
   end
 
   @doc """
   Returns the backup backend configuration.
   """
   def backup_backend do
-    Application.get_env(:cachetastic, :fault_tolerance)[:backup]
+    Application.get_env(:cachetastic, :backends)
+    |> Keyword.get(:fault_tolerance)
+    |> Keyword.fetch(:backup)
+    |> elem(1)
   end
 end

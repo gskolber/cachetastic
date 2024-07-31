@@ -27,13 +27,13 @@ defmodule Cachetastic.Backend.RedisTest do
   end
 
   test "start_link raises error if host is missing" do
-    assert_raise ArgumentError, "Both :host and :port must be provided in options", fn ->
+    assert_raise KeyError, fn ->
       Redis.start_link(port: 6379, ttl: 3600)
     end
   end
 
   test "start_link raises error if port is missing" do
-    assert_raise ArgumentError, "Both :host and :port must be provided in options", fn ->
+    assert_raise KeyError, fn ->
       Redis.start_link(host: "localhost", ttl: 3600)
     end
   end

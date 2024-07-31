@@ -1,4 +1,7 @@
 defmodule Cachetastic.FaultTolerance do
+  @moduledoc """
+  Fault tolerance utilities for Cachetastic.
+  """
   @retry_attempts 3
   @retry_delay 100
 

@@ -37,7 +37,7 @@ defmodule Cachetastic do
   @doc """
   Starts the cache with the primary backend.
   """
-  def start_link() do
+  def start_link do
     primary_backend = Config.primary_backend()
     Config.start_backend(primary_backend)
   end
@@ -53,11 +53,11 @@ defmodule Cachetastic do
       {:ok, backup_state} = Config.start_backend(backup_backend)
 
       FaultTolerance.with_fallback(
-        fn -> apply(module_for(primary_backend), :put, [primary_state, key, value, ttl]) end,
-        fn -> apply(module_for(backup_backend), :put, [backup_state, key, value, ttl]) end
+        fn -> module_for(primary_backend).put(primary_state, key, value, ttl) end,
+        fn -> module_for(backup_backend).put(backup_state, key, value, ttl) end
       )
     else
-      apply(module_for(primary_backend), :put, [primary_state, key, value, ttl])
+      module_for(primary_backend).put(primary_state, key, value, ttl)
     end
   end
 
@@ -72,11 +72,11 @@ defmodule Cachetastic do
       {:ok, backup_state} = Config.start_backend(backup_backend)
 
       FaultTolerance.with_fallback(
-        fn -> apply(module_for(primary_backend), :get, [primary_state, key]) end,
-        fn -> apply(module_for(backup_backend), :get, [backup_state, key]) end
+        fn -> module_for(primary_backend).get(primary_state, key) end,
+        fn -> module_for(backup_backend).get(backup_state, key) end
       )
     else
-      apply(module_for(primary_backend), :get, [primary_state, key])
+      module_for(primary_backend).get(primary_state, key)
     end
   end
 
@@ -91,18 +91,18 @@ defmodule Cachetastic do
       {:ok, backup_state} = Config.start_backend(backup_backend)
 
       FaultTolerance.with_fallback(
-        fn -> apply(module_for(primary_backend), :delete, [primary_state, key]) end,
-        fn -> apply(module_for(backup_backend), :delete, [backup_state, key]) end
+        fn -> module_for(primary_backend).delete(primary_state, key) end,
+        fn -> module_for(backup_backend).delete(backup_state, key) end
       )
     else
-      apply(module_for(primary_backend), :delete, [primary_state, key])
+      module_for(primary_backend).delete(primary_state, key)
     end
   end
 
   @doc """
   Clears all values from the cache.
   """
-  def clear() do
+  def clear do
     primary_backend = Config.primary_backend()
     {:ok, primary_state} = Config.start_backend(primary_backend)
 
@@ -110,11 +110,11 @@ defmodule Cachetastic do
       {:ok, backup_state} = Config.start_backend(backup_backend)
 
       FaultTolerance.with_fallback(
-        fn -> apply(module_for(primary_backend), :clear, [primary_state]) end,
-        fn -> apply(module_for(backup_backend), :clear, [backup_state]) end
+        fn -> module_for(primary_backend).clear(primary_state) end,
+        fn -> module_for(backup_backend).clear(backup_state) end
       )
     else
-      apply(module_for(primary_backend), :clear, [primary_state])
+      module_for(primary_backend).clear(primary_state)
     end
   end
 
