@@ -8,29 +8,27 @@ defmodule Cachetastic do
   ## Configuration
 
       config :cachetastic, :backends,
-        primary: :redis,
-        redis: [host: "localhost", port: 6379, ttl: 3600],
+        primary: :redis_pool,
+        redis_pool: [host: "localhost", port: 6379, pool_size: 10, ttl: 3600],
         ets: [ttl: 600],
-        fault_tolerance: [primary: :redis, backup: :ets]
+        fault_tolerance: [primary: :redis_pool, backup: :ets]
+
+  ## Key Namespacing
+
+      config :cachetastic, key_prefix: "myapp"
+
+  All keys will be automatically prefixed: `"myapp:your_key"`.
 
   ## Named Caches
-
-  You can create multiple independent cache instances:
 
       Cachetastic.put(:sessions, "user:123", session_data, nil)
       Cachetastic.get(:sessions, "user:123")
 
-  The `:default` cache is used when no name is provided.
+  ## Fetch with Thundering Herd Protection
 
-  ## Usage
-
-      Cachetastic.put("key", "value")
-      {:ok, value} = Cachetastic.get("key")
-      Cachetastic.delete("key")
-      Cachetastic.clear()
-
-      # Fetch with fallback computation
       {:ok, value} = Cachetastic.fetch("key", fn -> expensive_computation() end)
+
+  Only one process computes the fallback; concurrent callers wait for the result.
   """
 
   alias Cachetastic.Config
@@ -79,12 +77,13 @@ defmodule Cachetastic do
   def get(cache_name, key) when is_atom(cache_name) do
     ensure_backends_started(cache_name)
     primary = Config.primary_backend()
+    prefixed_key = prefixed(key)
 
     result =
       Telemetry.span(
         [:cachetastic, :cache, :get],
         %{key: key, cache: cache_name, backend: primary},
-        fn -> execute_with_fallback(cache_name, fn mod, srv -> mod.get(srv, key) end) end
+        fn -> execute_with_fallback(cache_name, fn mod, srv -> mod.get(srv, prefixed_key) end) end
       )
 
     emit_get_result(key, cache_name, result)
@@ -93,6 +92,9 @@ defmodule Cachetastic do
 
   @doc """
   Fetches a value from cache. On miss, calls `fallback_fn`, caches the result, and returns it.
+
+  Uses per-key locking to prevent thundering herd — only one process computes the
+  fallback for a given key, and concurrent callers wait for the result.
 
   ## Options
 
@@ -135,11 +137,43 @@ defmodule Cachetastic do
   def delete(cache_name, key) when is_atom(cache_name) do
     ensure_backends_started(cache_name)
     primary = Config.primary_backend()
+    prefixed_key = prefixed(key)
 
     Telemetry.span(
       [:cachetastic, :cache, :delete],
       %{key: key, cache: cache_name, backend: primary},
-      fn -> execute_with_fallback(cache_name, fn mod, srv -> mod.delete(srv, key) end) end
+      fn -> execute_with_fallback(cache_name, fn mod, srv -> mod.delete(srv, prefixed_key) end) end
+    )
+  end
+
+  @doc """
+  Deletes all keys matching a pattern. Only supported on Redis/RedisPool backends.
+
+  Uses Redis `SCAN` to avoid blocking.
+
+  ## Examples
+
+      Cachetastic.delete_pattern("user:*")
+      Cachetastic.delete_pattern(:api_cache, "endpoint:/v1/*")
+  """
+  @spec delete_pattern(String.t()) :: :ok | {:error, term()}
+  @spec delete_pattern(cache_name(), String.t()) :: :ok | {:error, term()}
+  def delete_pattern(pattern) when is_binary(pattern), do: delete_pattern(:default, pattern)
+
+  def delete_pattern(cache_name, pattern) when is_atom(cache_name) do
+    ensure_backends_started(cache_name)
+    primary = Config.primary_backend()
+    prefixed_pattern = prefixed(pattern)
+
+    Telemetry.span(
+      [:cachetastic, :cache, :delete_pattern],
+      %{pattern: pattern, cache: cache_name, backend: primary},
+      fn ->
+        server = backend_server(primary, cache_name)
+
+        mod = Config.module_for(primary)
+        do_delete_pattern(mod, server, prefixed_pattern)
+      end
     )
   end
 
@@ -164,11 +198,14 @@ defmodule Cachetastic do
   defp do_put(cache_name, key, value, ttl) do
     ensure_backends_started(cache_name)
     primary = Config.primary_backend()
+    prefixed_key = prefixed(key)
 
     Telemetry.span(
       [:cachetastic, :cache, :put],
       %{key: key, cache: cache_name, backend: primary},
-      fn -> execute_with_fallback(cache_name, fn mod, srv -> mod.put(srv, key, value, ttl) end) end
+      fn ->
+        execute_with_fallback(cache_name, fn mod, srv -> mod.put(srv, prefixed_key, value, ttl) end)
+      end
     )
   end
 
@@ -178,19 +215,47 @@ defmodule Cachetastic do
     Telemetry.span([:cachetastic, :cache, :fetch], %{key: key, cache: cache_name}, fn ->
       case get(cache_name, key) do
         {:ok, value} ->
-          Telemetry.emit([:cachetastic, :cache, :fetch, :result], %{}, %{key: key, cache: cache_name, result: :hit})
+          Telemetry.emit([:cachetastic, :cache, :fetch, :result], %{}, %{
+            key: key, cache: cache_name, result: :hit
+          })
+
           {:ok, value}
 
         {:error, :not_found} ->
-          value = fallback_fn.()
-          put(cache_name, key, value, ttl)
-          Telemetry.emit([:cachetastic, :cache, :fetch, :result], %{}, %{key: key, cache: cache_name, result: :miss})
-          {:ok, value}
+          fetch_with_lock(cache_name, key, fallback_fn, ttl)
 
         {:error, _} = error ->
           error
       end
     end)
+  end
+
+  defp fetch_with_lock(cache_name, key, fallback_fn, ttl) do
+    lock_key = {cache_name, key}
+
+    result =
+      Cachetastic.Lock.run(lock_key, fn ->
+        # Double-check after acquiring lock — another process may have populated it
+        case get(cache_name, key) do
+          {:ok, value} -> value
+          _miss ->
+            value = fallback_fn.()
+            put(cache_name, key, value, ttl)
+            value
+        end
+      end)
+
+    case result do
+      {:ok, value} ->
+        Telemetry.emit([:cachetastic, :cache, :fetch, :result], %{}, %{
+          key: key, cache: cache_name, result: :miss
+        })
+
+        {:ok, value}
+
+      {:error, _} = error ->
+        error
+    end
   end
 
   defp execute_with_fallback(cache_name, operation) do
@@ -229,6 +294,13 @@ defmodule Cachetastic do
     })
   end
 
+  defp prefixed(key) do
+    case Application.get_env(:cachetastic, :key_prefix) do
+      nil -> key
+      prefix -> "#{prefix}:#{key}"
+    end
+  end
+
   defp ensure_backend_started(backend, cache_name) do
     registry_key = {Cachetastic.Config, backend, cache_name}
 
@@ -253,5 +325,15 @@ defmodule Cachetastic do
 
   defp backend_server(backend, cache_name) do
     {:via, Registry, {Cachetastic.Registry, {Cachetastic.Config, backend, cache_name}}}
+  end
+
+  alias Cachetastic.Backend.RedisPool, as: PoolBackend
+
+  defp do_delete_pattern(PoolBackend, server, pattern) do
+    PoolBackend.delete_pattern(server, pattern)
+  end
+
+  defp do_delete_pattern(_mod, _server, _pattern) do
+    {:error, :pattern_delete_not_supported}
   end
 end

@@ -48,5 +48,6 @@ defmodule Cachetastic.Config do
   Returns the module for a backend atom.
   """
   def module_for(:redis), do: Cachetastic.Backend.Redis
+  def module_for(:redis_pool), do: Cachetastic.Backend.RedisPool
   def module_for(:ets), do: Cachetastic.Backend.ETS
 end

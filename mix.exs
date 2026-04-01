@@ -4,7 +4,7 @@ defmodule Cachetastic.MixProject do
   def project do
     [
       app: :cachetastic,
-      version: "0.2.0",
+      version: "0.3.0",
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
@@ -35,6 +35,7 @@ defmodule Cachetastic.MixProject do
   defp deps do
     [
       {:redix, "~> 1.5"},
+      {:nimble_pool, "~> 1.0"},
       {:jason, "~> 1.4"},
       {:telemetry, "~> 1.0"},
       {:ecto, "~> 3.6", only: :test, runtime: false},
