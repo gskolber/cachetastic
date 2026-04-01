@@ -2,41 +2,9 @@ defmodule Cachetastic.Ecto do
   @moduledoc """
   Provides caching functionality for Ecto queries.
 
-  This module allows you to easily cache and retrieve Ecto query results using Cachetastic.
-  It supports both ETS and Redis backends for caching.
+  Uses the configured `Cachetastic.Serializer` for encoding/decoding cached data.
 
   ## Usage
-
-  To use this module, you need to include it in your Ecto repository and configure Cachetastic.
-
-  ### Step 1: Add Cachetastic to Your Dependencies
-
-  Update your `mix.exs` file to include Cachetastic as a dependency:
-
-      defp deps do
-        [
-          {:cachetastic, "~> 0.1.0"}
-        ]
-      end
-
-  Run `mix deps.get` to fetch the dependencies.
-
-  ### Step 2: Configure Cachetastic
-
-  Add the configuration for Cachetastic in your `config/config.exs` file:
-
-      use Mix.Config
-
-      config :cachetastic,
-        backends: [
-          ets: [ttl: 600],
-          redis: [host: "localhost", port: 6379, ttl: 3600]
-        ],
-        fault_tolerance: [primary: :redis, backup: :ets]
-
-  ### Step 3: Implement Cachetastic in Your Ecto Repo
-
-  Add the Cachetastic plugin to your Ecto repo:
 
       defmodule MyApp.Repo do
         use Ecto.Repo,
@@ -46,45 +14,13 @@ defmodule Cachetastic.Ecto do
         use Cachetastic.Ecto, repo: MyApp.Repo
       end
 
-  ### Step 4: Use Cachetastic in Your Application
-
-  Now you can use Cachetastic to cache and retrieve Ecto query results:
-
-      defmodule MyApp.SomeModule do
-        alias MyApp.Repo
-        alias MyApp.User
-
-        def some_function do
-          query = from u in User, where: u.active == true
-
-          # Fetch with cache
-          {:ok, users} = Repo.get_with_cache(query)
-
-          # Invalidate cache
-          Repo.invalidate_cache(query)
-        end
-      end
+      query = from u in User, where: u.active == true
+      {:ok, users} = Repo.get_with_cache(query)
+      Repo.invalidate_cache(query)
   """
 
   alias Ecto.Schema.Metadata
 
-  @doc """
-  Macro to be used in an Ecto repository module to enable caching for Ecto queries.
-
-  ## Options
-
-    * `:repo` - The Ecto repository module (required).
-
-  ## Example
-
-      defmodule MyApp.Repo do
-        use Ecto.Repo,
-          otp_app: :my_app,
-          adapter: Ecto.Adapters.Postgres
-
-        use Cachetastic.Ecto, repo: MyApp.Repo
-      end
-  """
   defmacro __using__(opts) do
     repo = Keyword.fetch!(opts, :repo)
 
@@ -92,40 +28,35 @@ defmodule Cachetastic.Ecto do
       @repo unquote(repo)
 
       @doc """
-      Fetches query results from the cache if available, otherwise executes the query and caches the results.
-
-      ## Parameters
-
-        * `queryable` - The Ecto queryable to be executed.
-        * `opts` - Options for the query (default: []).
-
-      ## Returns
-
-        * `{:ok, result}` - The query results, either from the cache or from the database.
-        * `{:error, reason}` - An error occurred while fetching the results.
-
-      ## Example
-
-          query = from u in User, where: u.active == true
-          {:ok, users} = Repo.get_with_cache(query)
+      Fetches query results from the cache or executes the query and caches the results.
       """
       def get_with_cache(queryable, opts \\ []) do
         cache_key = generate_cache_key(queryable, opts)
+        serializer = Cachetastic.Serializer.configured()
 
         case Cachetastic.get(cache_key) do
-          {:ok, json_result} ->
-            {:ok, cached_maps} = Jason.decode(json_result, keys: :atoms)
-            result = Enum.map(cached_maps, &map_to_struct/1)
-            {:ok, result}
+          {:ok, cached} ->
+            case serializer.decode(cached) do
+              {:ok, decoded_maps} ->
+                result = Enum.map(decoded_maps, &map_to_struct/1)
+                {:ok, result}
+
+              {:error, _} = error ->
+                error
+            end
 
           {:error, :not_found} ->
             result = @repo.all(queryable, opts)
             cache_maps = Enum.map(result, &struct_to_map/1)
 
-            {:ok, json_result} = Jason.encode(cache_maps)
-            Cachetastic.put(cache_key, json_result)
+            case serializer.encode(cache_maps) do
+              {:ok, encoded} ->
+                Cachetastic.put(cache_key, encoded)
+                {:ok, result}
 
-            {:ok, result}
+              {:error, _} = error ->
+                error
+            end
 
           error ->
             {:error, %{error_data: error}}
@@ -134,16 +65,6 @@ defmodule Cachetastic.Ecto do
 
       @doc """
       Invalidates the cache for the given query.
-
-      ## Parameters
-
-        * `queryable` - The Ecto queryable whose cache should be invalidated.
-        * `opts` - Options for the query (default: []).
-
-      ## Example
-
-          query = from u in User, where: u.active == true
-          Repo.invalidate_cache(query)
       """
       def invalidate_cache(queryable, opts \\ []) do
         cache_key = generate_cache_key(queryable, opts)
@@ -160,34 +81,47 @@ defmodule Cachetastic.Ecto do
       end
 
       defp map_to_struct(map) do
-        struct_module = String.to_existing_atom(map[:__struct__])
-        meta = map_to_meta(map[:__meta__])
+        struct_module = String.to_existing_atom(map["__struct__"] || map[:__struct__])
+        meta = map_to_meta(map["__meta__"] || map[:__meta__])
 
         struct_module
-        |> struct(Map.drop(map, [:__meta__, :__struct__]))
+        |> struct(atomize_keys(Map.drop(map, ["__meta__", "__struct__", :__meta__, :__struct__])))
         |> Map.put(:__meta__, meta)
         |> Map.put(:__struct__, struct_module)
       end
 
+      defp atomize_keys(map) when is_map(map) do
+        Map.new(map, fn
+          {k, v} when is_binary(k) -> {String.to_existing_atom(k), v}
+          {k, v} -> {k, v}
+        end)
+      end
+
       defp meta_to_map(%Metadata{} = meta) do
         %{
-          state: meta.state,
+          state: Atom.to_string(meta.state),
           source: meta.source,
           prefix: meta.prefix,
           context: meta.context,
-          schema: meta.schema
+          schema: Atom.to_string(meta.schema)
         }
       end
 
       defp map_to_meta(map) when is_map(map) do
+        state = map["state"] || map[:state]
+        schema = map["schema"] || map[:schema]
+
         %Metadata{
-          state: map[:state] |> String.to_existing_atom(),
-          source: map[:source],
-          prefix: map[:prefix],
-          context: map[:context],
-          schema: map[:schema] |> String.to_existing_atom()
+          state: to_existing_atom(state),
+          source: map["source"] || map[:source],
+          prefix: map["prefix"] || map[:prefix],
+          context: map["context"] || map[:context],
+          schema: to_existing_atom(schema)
         }
       end
+
+      defp to_existing_atom(val) when is_atom(val), do: val
+      defp to_existing_atom(val) when is_binary(val), do: String.to_existing_atom(val)
     end
   end
 end

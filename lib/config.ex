@@ -1,57 +1,52 @@
 defmodule Cachetastic.Config do
   @moduledoc """
-  Handles configuration and backend initialization for Cachetastic.
+  Handles configuration for Cachetastic.
 
-  This module provides functions to start the backends and retrieve the primary
-  and backup backend configurations from the application environment.
-
-  ## Examples
-
-      # Start the primary backend
-      {:ok, pid} = Cachetastic.Config.start_backend(:redis)
-
-      # Get the primary backend
-      primary_backend = Cachetastic.Config.primary_backend()
-
-      # Get the backup backend
-      backup_backend = Cachetastic.Config.backup_backend()
+  Reads backend configuration from the application environment and provides
+  helper functions to resolve backend modules and settings.
   """
 
   @doc """
-  Starts the specified backend and returns its state.
+  Returns the backend configuration keyword list.
   """
-
-  alias Cachetastic.Backend.ETS
-  alias Cachetastic.Backend.Redis
-
-  def start_backend(:redis) do
-    config = Application.get_env(:cachetastic, :backends)[:redis]
-    Redis.start_link(config)
+  def backends_config do
+    Application.get_env(:cachetastic, :backends, [])
   end
-
-  def start_backend(:ets) do
-    config = Application.get_env(:cachetastic, :backends)[:ets]
-    ETS.start_link(config)
-  end
-
-  def start_backend(_), do: {:error, "Unsupported backend"}
 
   @doc """
-  Returns the primary backend configuration.
+  Returns the primary backend atom (:redis or :ets).
   """
   def primary_backend do
-    Application.get_env(:cachetastic, :backends)
-    |> Keyword.get(:fault_tolerance)
-    |> Keyword.fetch!(:primary)
+    config = backends_config()
+
+    case Keyword.get(config, :fault_tolerance) do
+      nil -> Keyword.get(config, :primary, :ets)
+      ft -> Keyword.fetch!(ft, :primary)
+    end
   end
 
   @doc """
-  Returns the backup backend configuration.
+  Returns the backup backend atom, or nil if not configured.
   """
   def backup_backend do
-    Application.get_env(:cachetastic, :backends)
-    |> Keyword.get(:fault_tolerance)
-    |> Keyword.fetch(:backup)
-    |> elem(1)
+    config = backends_config()
+
+    case Keyword.get(config, :fault_tolerance) do
+      nil -> nil
+      ft -> Keyword.get(ft, :backup)
+    end
   end
+
+  @doc """
+  Returns the configuration for a specific backend.
+  """
+  def backend_config(backend) do
+    Keyword.get(backends_config(), backend, [])
+  end
+
+  @doc """
+  Returns the module for a backend atom.
+  """
+  def module_for(:redis), do: Cachetastic.Backend.Redis
+  def module_for(:ets), do: Cachetastic.Backend.ETS
 end
