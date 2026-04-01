@@ -4,11 +4,12 @@ defmodule Cachetastic.MixProject do
   def project do
     [
       app: :cachetastic,
-      version: "0.3.0",
+      version: "1.0.0",
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
       deps: deps(),
+      dialyzer: [plt_add_apps: [:ex_unit]],
       description:
         "A unified caching library for Elixir with support for ETS and Redis backends.",
       package: package(),
@@ -17,7 +18,7 @@ defmodule Cachetastic.MixProject do
       homepage_url: "https://github.com/gskolber/cachetastic",
       docs: [
         main: "readme",
-        extras: ["README.md", "docs/ecto.md"]
+        extras: ["README.md", "CHANGELOG.md", "docs/ecto.md"]
       ]
     ]
   end
@@ -25,7 +26,7 @@ defmodule Cachetastic.MixProject do
   def application do
     [
       mod: {Cachetastic.Application, []},
-      extra_applications: [:logger]
+      extra_applications: [:logger, :crypto]
     ]
   end
 
@@ -43,7 +44,8 @@ defmodule Cachetastic.MixProject do
       {:postgrex, ">= 0.0.0", only: :test, runtime: false},
       {:patch, "~> 0.12.0", only: :test, runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
-      {:credo, "~> 1.7.12", only: [:dev, :test], runtime: false}
+      {:credo, "~> 1.7.12", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
     ]
   end
 
@@ -51,7 +53,10 @@ defmodule Cachetastic.MixProject do
     [
       maintainers: ["Gabriel Kolber"],
       licenses: ["MIT"],
-      links: %{"GitHub" => "https://github.com/gskolber/cachetastic"}
+      links: %{
+        "GitHub" => "https://github.com/gskolber/cachetastic",
+        "Changelog" => "https://github.com/gskolber/cachetastic/blob/master/CHANGELOG.md"
+      }
     ]
   end
 end
