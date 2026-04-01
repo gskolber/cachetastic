@@ -2,13 +2,21 @@
 
 ## Overview
 
-**Cachetastic** is a powerful and user-friendly caching library for Elixir. The goal is to provide a unified interface for various caching mechanisms like ETS and Redis, with built-in fault tolerance.
+**Cachetastic** is a powerful and user-friendly caching library for Elixir. It provides a unified interface for various caching mechanisms like ETS and Redis, with built-in fault tolerance, telemetry, and more.
 
 ## Features
 
 - **Unified Interface**: Interact with different caching backends through a consistent API.
-- **Hybrid Caching**: Combine in-memory caching with persistent storage.
-- **Fault Tolerance**: Automatically handle failures in the primary backend.
+- **OTP Supervision**: Backends run as supervised GenServers — no connection leaks.
+- **Fault Tolerance**: Automatic retries and fallback to a backup backend.
+- **ETS TTL**: Entries expire via lazy checks and periodic sweeps.
+- **Named Caches**: Run multiple isolated cache instances side by side.
+- **Fetch with Fallback**: Compute and cache on miss with `Cachetastic.fetch/2`.
+- **Telemetry**: Built-in events for all cache operations.
+- **Stats**: Track hits, misses, hit rate, and more.
+- **Configurable Serialization**: Pluggable serializers (JSON, Erlang term, or custom).
+- **Multi-Layer Caching**: L1 (ETS) + L2 (Redis) for fast local reads with remote persistence.
+- **Distributed Invalidation**: Pub/sub via Erlang `:pg` for cross-node cache invalidation.
 - **Ecto Integration**: Cache and retrieve Ecto query results seamlessly.
 
 ## Installation
@@ -18,8 +26,7 @@ Add `cachetastic` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:cachetastic, "~> 0.1.0"},
-    {:redix, "~> 1.0"},
+    {:cachetastic, "~> 0.2.0"}
   ]
 end
 ```
@@ -33,67 +40,120 @@ Run `mix deps.get` to fetch the dependencies.
 Define the backends and fault tolerance configuration in `config/config.exs`:
 
 ```elixir
-use Mix.Config
+import Config
 
-config :cachetastic,
-  backends: [
-    ets: [ttl: 600],
-    redis: [host: "localhost", port: 6379, ttl: 3600]
-  ],
+config :cachetastic, :backends,
+  primary: :redis,
+  redis: [host: "localhost", port: 6379, ttl: 3600],
+  ets: [ttl: 600],
   fault_tolerance: [primary: :redis, backup: :ets]
 ```
 
+Cachetastic starts automatically as an OTP application — no manual setup needed.
+
 ### Basic Operations
 
-Initialize the cache and perform basic operations:
+```elixir
+# Put a value in the cache
+Cachetastic.put("key", "value")
+
+# Put with a custom TTL (in seconds)
+Cachetastic.put("key", "value", 120)
+
+# Get a value
+{:ok, value} = Cachetastic.get("key")
+
+# Delete a value
+Cachetastic.delete("key")
+
+# Clear the entire cache
+Cachetastic.clear()
+```
+
+### Fetch with Fallback
+
+Compute and cache a value on miss:
 
 ```elixir
-# Start the cache
-{:ok, _pid} = Cachetastic.start_link()
+{:ok, users} = Cachetastic.fetch("active_users", fn ->
+  Repo.all(from u in User, where: u.active == true)
+end)
 
-# Cache operations
-Cachetastic.put("key", "value")
-{:ok, value} = Cachetastic.get("key")
-Cachetastic.delete("key")
-Cachetastic.clear()
+# With custom TTL
+{:ok, data} = Cachetastic.fetch("expensive_query", fn ->
+  compute_expensive_data()
+end, ttl: 300)
+```
+
+### Named Caches
+
+Run multiple isolated caches:
+
+```elixir
+Cachetastic.put(:sessions, "user:123", session_data, 1800)
+{:ok, session} = Cachetastic.get(:sessions, "user:123")
+
+Cachetastic.put(:api_cache, "endpoint:/users", response, 60)
+{:ok, cached} = Cachetastic.get(:api_cache, "endpoint:/users")
+
+# Each cache is independent
+Cachetastic.clear(:sessions)  # does not affect :api_cache
+```
+
+### Telemetry Events
+
+Cachetastic emits telemetry events for all operations:
+
+```elixir
+:telemetry.attach("my-handler", [:cachetastic, :cache, :get], fn event, measurements, metadata, _config ->
+  Logger.info("Cache #{metadata.result}: #{metadata.key} (#{measurements.duration}ns)")
+end, nil)
+```
+
+Events emitted:
+- `[:cachetastic, :cache, :get]` — with `%{duration: ns}`
+- `[:cachetastic, :cache, :get, :result]` — with `%{result: :hit | :miss | :error}`
+- `[:cachetastic, :cache, :put]`
+- `[:cachetastic, :cache, :delete]`
+- `[:cachetastic, :cache, :clear]`
+- `[:cachetastic, :cache, :fetch]`
+- `[:cachetastic, :cache, :fallback]`
+
+### Stats
+
+```elixir
+Cachetastic.Stats.get()
+# => %{hits: 42, misses: 5, puts: 20, deletes: 3, clears: 1, errors: 0, fallbacks: 0, hit_rate: 0.894}
+
+Cachetastic.Stats.get(:sessions)
+Cachetastic.Stats.reset()
+```
+
+### Configurable Serialization
+
+By default, Redis values are serialized with JSON. You can change it:
+
+```elixir
+# Use Erlang term format (supports any Elixir term)
+config :cachetastic, serializer: Cachetastic.Serializers.ErlangTerm
+
+# Or implement your own
+defmodule MyApp.MsgpackSerializer do
+  @behaviour Cachetastic.Serializer
+
+  @impl true
+  def encode(term), do: Msgpax.pack(term)
+
+  @impl true
+  def decode(binary), do: Msgpax.unpack(binary)
+end
+
+config :cachetastic, serializer: MyApp.MsgpackSerializer
 ```
 
 ### Ecto Integration
 
-You can use Cachetastic to cache and retrieve Ecto query results.
-
-#### Step 1: Add Cachetastic to Your Dependencies
-
-Update your `mix.exs` file to include Cachetastic as a dependency:
-
-```elixir
-defp deps do
-  [
-    {:cachetastic, "~> 0.1.0"}
-  ]
-end
-```
-
-Run `mix deps.get` to fetch the dependencies.
-
-#### Step 2: Configure Cachetastic
-
-Add the configuration for Cachetastic in your `config/config.exs` file:
-
-```elixir
-use Mix.Config
-
-config :cachetastic,
-  backends: [
-    ets: [ttl: 600],
-    redis: [host: "localhost", port: 6379, ttl: 3600]
-  ],
-  fault_tolerance: [primary: :redis, backup: :ets]
-```
-
-#### Step 3: Implement Cachetastic in Your Ecto Repo
-
-Add the Cachetastic plugin to your Ecto repo:
+Cache Ecto query results automatically:
 
 ```elixir
 defmodule MyApp.Repo do
@@ -105,104 +165,22 @@ defmodule MyApp.Repo do
 end
 ```
 
-#### Step 4: Use Cachetastic in Your Application
-
-Now you can use Cachetastic to cache and retrieve Ecto query results:
-
 ```elixir
-defmodule MyApp.SomeModule do
-  alias MyApp.Repo
-  alias MyApp.User
+query = from u in User, where: u.active == true
 
-  def some_function do
-    query = from u in User, where: u.active == true
+# First call hits the DB and caches the result
+{:ok, users} = Repo.get_with_cache(query)
 
-    # Fetch with cache
-    {:ok, users} = Repo.get_with_cache(query)
+# Subsequent calls return from cache
+{:ok, users} = Repo.get_with_cache(query)
 
-    # Invalidate cache
-    Repo.invalidate_cache(query)
-  end
-end
+# Invalidate when data changes
+Repo.invalidate_cache(query)
 ```
 
-### Example Implementation
+See [Ecto Integration Guide](docs/ecto.md) for more details.
 
-Here's an example of how you can integrate Cachetastic into your own Elixir application:
-
-#### Step 1: Add Cachetastic to Your Dependencies
-
-Update your `mix.exs` file to include Cachetastic as a dependency:
-
-```elixir
-defp deps do
-  [
-    {:cachetastic, "~> 0.1.0"}
-  ]
-end
-```
-
-Run `mix deps.get` to fetch the dependencies.
-
-#### Step 2: Configure Cachetastic
-
-Add the configuration for Cachetastic in your `config/config.exs` file:
-
-```elixir
-use Mix.Config
-
-config :cachetastic,
-  backends: [
-    ets: [ttl: 600],
-    redis: [host: "localhost", port: 6379, ttl: 3600]
-  ],
-  fault_tolerance: [primary: :redis, backup: :ets]
-```
-
-#### Step 3: Use Cachetastic in Your Application
-
-In your application module, start Cachetastic and use it to perform caching operations:
-
-```elixir
-defmodule MyApp.Application do
-  use Application
-
-  def start(_type, _args) do
-    children = [
-      # Start the Cachetastic cache
-      {Cachetastic, []}
-    ]
-
-    opts = [strategy: :one_for_one, name: MyApp.Supervisor]
-    Supervisor.start_link(children, opts)
-  end
-end
-```
-
-Now you can use Cachetastic to perform caching operations anywhere in your application:
-
-```elixir
-defmodule MyApp.SomeModule do
-  def some_function do
-    # Put a value in the cache
-    Cachetastic.put("my_key", "my_value")
-
-    # Get a value from the cache
-    case Cachetastic.get("my_key") do
-      {:ok, value} -> IO.puts("Got value: #{value}")
-      :error -> IO.puts("Key not found")
-    end
-
-    # Delete a value from the cache
-    Cachetastic.delete("my_key")
-
-    # Clear the entire cache
-    Cachetastic.clear()
-  end
-end
-```
-
-### Contribution
+## Contribution
 
 Feel free to open issues and pull requests. We appreciate your contributions!
 

@@ -2,16 +2,16 @@
 
 Cachetastic provides caching functionality for Ecto queries, allowing you to cache and retrieve query results efficiently.
 
-## Usage
+## Setup
 
-### Step 1: Add Cachetastic to Your Dependencies
+### Step 1: Add Dependencies
 
-Update your `mix.exs` file to include Cachetastic as a dependency:
+Update your `mix.exs` file:
 
 ```elixir
 defp deps do
   [
-    {:cachetastic, "~> 0.1.0"},
+    {:cachetastic, "~> 0.2.0"},
     {:ecto, "~> 3.6"},
     {:ecto_sql, "~> 3.6"},
     {:postgrex, ">= 0.0.0"}
@@ -23,30 +23,19 @@ Run `mix deps.get` to fetch the dependencies.
 
 ### Step 2: Configure Cachetastic
 
-Add the configuration for Cachetastic in your `config/config.exs` file:
+Add the configuration in your `config/config.exs` file:
 
 ```elixir
-use Mix.Config
+import Config
 
-config :cachetastic,
-  backends: [
-    ets: [ttl: 600],
-    redis: [host: "localhost", port: 6379, ttl: 3600]
-  ],
+config :cachetastic, :backends,
+  primary: :redis,
+  redis: [host: "localhost", port: 6379, ttl: 3600],
+  ets: [ttl: 600],
   fault_tolerance: [primary: :redis, backup: :ets]
-
-config :cachetastic, Cachetastic.TestRepo,
-  username: "postgres",
-  password: "postgres",
-  database: "my_app_test",
-  hostname: "localhost"
-
-config :cachetastic, ecto_repos: [Cachetastic.TestRepo]
 ```
 
-### Step 3: Implement Cachetastic in Your Ecto Repo
-
-Add the Cachetastic plugin to your Ecto repo:
+### Step 3: Add Cachetastic to Your Repo
 
 ```elixir
 defmodule MyApp.Repo do
@@ -58,23 +47,45 @@ defmodule MyApp.Repo do
 end
 ```
 
-### Step 4: Use Cachetastic in Your Application
-
-Now you can use Cachetastic to cache and retrieve Ecto query results:
+### Step 4: Use It
 
 ```elixir
 defmodule MyApp.SomeModule do
   alias MyApp.Repo
   alias MyApp.User
+  import Ecto.Query
 
-  def some_function do
+  def list_active_users do
     query = from u in User, where: u.active == true
 
-    # Fetch with cache
+    # First call executes the query and caches the result
     {:ok, users} = Repo.get_with_cache(query)
+    users
+  end
 
-    # Invalidate cache
+  def update_user(user, attrs) do
+    query = from u in User, where: u.active == true
+
+    # Invalidate cache after data changes
     Repo.invalidate_cache(query)
+
+    Repo.update(Ecto.Changeset.change(user, attrs))
   end
 end
+```
+
+## How It Works
+
+- `Repo.get_with_cache(query)` — checks the cache first. On miss, runs the query, serializes the results using the configured `Cachetastic.Serializer`, stores them, and returns.
+- `Repo.invalidate_cache(query)` — deletes the cached entry for that query.
+- Cache keys are derived from the query inspection, so different queries get different cache entries.
+
+## Serialization
+
+The Ecto integration uses whichever serializer is configured for Cachetastic. The default is JSON (`Cachetastic.Serializers.JSON`). Ecto struct metadata (`__meta__`, `__struct__`) is preserved during serialization/deserialization.
+
+If you need to cache structs with non-JSON-serializable fields, switch to the Erlang term serializer:
+
+```elixir
+config :cachetastic, serializer: Cachetastic.Serializers.ErlangTerm
 ```
