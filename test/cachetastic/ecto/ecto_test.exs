@@ -12,7 +12,7 @@ defmodule Cachetastic.EctoTest do
 
     # First call, should fetch from DB and cache it
     {:ok, records} = Repo.get_with_cache(query)
-    assert length(records) > 0
+    assert records != []
 
     # Second call, should fetch from cache
     {:ok, cached_records} = Repo.get_with_cache(query)
@@ -31,6 +31,6 @@ defmodule Cachetastic.EctoTest do
 
     # Fetch again, should not be from cache
     {:ok, records} = Repo.get_with_cache(query)
-    assert length(records) > 0
+    assert records != []
   end
 end

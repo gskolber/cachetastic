@@ -2,98 +2,131 @@ defmodule Cachetastic.Backend.Redis do
   @moduledoc """
   Redis backend for Cachetastic.
 
-  This module implements the Cachetastic.Behaviour using Redis as the storage mechanism.
+  A GenServer that owns a Redix connection and provides cache operations.
+  Values are serialized using the configured `Cachetastic.Serializer` before
+  storage in Redis.
 
   ## Options
 
-    * `:host` - The Redis host (default: "localhost")
-    * `:port` - The Redis port (default: 6379)
-    * `:ttl` - The time-to-live for cache entries in seconds (default: 3600)
-
-  ## Examples
-
-      # Start the Redis backend
-      {:ok, state} = Cachetastic.Backend.Redis.start_link(host: "localhost", port: 6379, ttl: 3600)
-
-      # Put a value in the cache
-      Cachetastic.Backend.Redis.put(state, "key", "value")
-
-      # Get a value from the cache
-      {:ok, value} = Cachetastic.Backend.Redis.get(state, "key")
-
-      # Delete a value from the cache
-      :ok = Cachetastic.Backend.Redis.delete(state, "key")
-
-      # Clear all values from the cache
-      :ok = Cachetastic.Backend.Redis.clear(state)
+    * `:host` - The Redis host (required)
+    * `:port` - The Redis port (required)
+    * `:ttl` - Default time-to-live in seconds (default: 3600)
+    * `:name` - GenServer name registration (optional)
   """
 
+  use GenServer
   @behaviour Cachetastic.Behaviour
+
   require Logger
 
-  @doc """
-  Starts the Redis backend with the given options.
-  """
-  @impl true
+  @default_ttl 3600
+
+  # --- Public API ---
+
+  @impl Cachetastic.Behaviour
   def start_link(opts) do
-    host = Keyword.fetch!(opts, :host)
-    port = Keyword.fetch!(opts, :port)
-    ttl = Keyword.get(opts, :ttl, 3600)
-    {:ok, conn} = Redix.start_link(host: host, port: port)
-    {:ok, %{conn: conn, ttl: ttl}}
-  rescue
-    KeyError ->
-      Logger.error("Both :host and :port must be provided in options")
-      reraise(KeyError, __STACKTRACE__)
-
-    exception ->
-      reraise(exception, __STACKTRACE__)
+    {name, opts} = Keyword.pop(opts, :name)
+    GenServer.start_link(__MODULE__, opts, name: name)
   end
 
-  @doc """
-  Puts a value in the Redis cache.
-  """
-  @impl true
-  def put(state, key, value, ttl \\ nil) do
+  @impl Cachetastic.Behaviour
+  def put(server, key, value, ttl \\ nil) do
+    GenServer.call(server, {:put, key, value, ttl})
+  end
+
+  @impl Cachetastic.Behaviour
+  def get(server, key) do
+    GenServer.call(server, {:get, key})
+  end
+
+  @impl Cachetastic.Behaviour
+  def delete(server, key) do
+    GenServer.call(server, {:delete, key})
+  end
+
+  @impl Cachetastic.Behaviour
+  def clear(server) do
+    GenServer.call(server, :clear)
+  end
+
+  # --- GenServer callbacks ---
+
+  @impl GenServer
+  def init(opts) do
+    with {:ok, host} <- Keyword.fetch(opts, :host),
+         {:ok, port} <- Keyword.fetch(opts, :port) do
+      ttl = Keyword.get(opts, :ttl, @default_ttl)
+
+      case Redix.start_link(host: host, port: port) do
+        {:ok, conn} ->
+          {:ok, %{conn: conn, ttl: ttl}}
+
+        {:error, reason} ->
+          {:stop, reason}
+      end
+    else
+      :error -> {:stop, {:missing_config, "Both :host and :port must be provided"}}
+    end
+  end
+
+  @impl GenServer
+  def handle_call({:put, key, value, ttl}, _from, state) do
     ttl = ttl || state.ttl
+    serializer = Cachetastic.Serializer.configured()
 
-    case Redix.command(state.conn, ["SET", key, value, "EX", ttl]) do
-      {:ok, "OK"} -> :ok
-      error -> error
-    end
+    result =
+      case serializer.encode(value) do
+        {:ok, encoded} ->
+          case Redix.command(state.conn, ["SET", key, encoded, "EX", ttl]) do
+            {:ok, "OK"} -> :ok
+            {:error, _} = error -> error
+          end
+
+        {:error, _} = error ->
+          error
+      end
+
+    {:reply, result, state}
   end
 
-  @doc """
-  Gets a value from the Redis cache by key.
-  """
-  @impl true
-  def get(state, key) do
-    case Redix.command(state.conn, ["GET", key]) do
-      {:ok, nil} -> {:error, :not_found}
-      {:ok, value} -> {:ok, value}
-      error -> error
-    end
+  def handle_call({:get, key}, _from, state) do
+    serializer = Cachetastic.Serializer.configured()
+
+    result =
+      case Redix.command(state.conn, ["GET", key]) do
+        {:ok, nil} ->
+          {:error, :not_found}
+
+        {:ok, encoded} ->
+          case serializer.decode(encoded) do
+            {:ok, value} -> {:ok, value}
+            {:error, _} = error -> error
+          end
+
+        {:error, _} = error ->
+          error
+      end
+
+    {:reply, result, state}
   end
 
-  @doc """
-  Deletes a value from the Redis cache by key.
-  """
-  @impl true
-  def delete(state, key) do
-    case Redix.command(state.conn, ["DEL", key]) do
-      {:ok, _} -> :ok
-      error -> error
-    end
+  def handle_call({:delete, key}, _from, state) do
+    result =
+      case Redix.command(state.conn, ["DEL", key]) do
+        {:ok, _} -> :ok
+        {:error, _} = error -> error
+      end
+
+    {:reply, result, state}
   end
 
-  @doc """
-  Clears all values from the Redis cache.
-  """
-  @impl true
-  def clear(state) do
-    case Redix.command(state.conn, ["FLUSHDB"]) do
-      {:ok, _} -> :ok
-      error -> error
-    end
+  def handle_call(:clear, _from, state) do
+    result =
+      case Redix.command(state.conn, ["FLUSHDB"]) do
+        {:ok, _} -> :ok
+        {:error, _} = error -> error
+      end
+
+    {:reply, result, state}
   end
 end

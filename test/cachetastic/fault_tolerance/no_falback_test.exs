@@ -2,10 +2,15 @@ defmodule Cachetastic.FaultTolerance.NoFallbackTest do
   use ExUnit.Case
 
   setup do
-    # Configuração inicial sem tolerância a falhas, utilizando ETS como backend primário
-    Application.put_env(:cachetastic, :fault_tolerance, primary: :ets)
+    # Configure with ETS only, no backup
+    Application.put_env(:cachetastic, :backends,
+      primary: :ets,
+      ets: [],
+      fault_tolerance: [primary: :ets]
+    )
 
-    {:ok, _pid} = Cachetastic.start_link()
+    Cachetastic.ensure_backends_started()
+
     :ok
   end
 

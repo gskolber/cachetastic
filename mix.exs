@@ -4,9 +4,10 @@ defmodule Cachetastic.MixProject do
   def project do
     [
       app: :cachetastic,
-      version: "0.1.3",
-      elixir: "~> 1.11",
+      version: "0.2.0",
+      elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
+      elixirc_paths: elixirc_paths(Mix.env()),
       deps: deps(),
       description:
         "A unified caching library for Elixir with support for ETS and Redis backends.",
@@ -23,20 +24,25 @@ defmodule Cachetastic.MixProject do
 
   def application do
     [
+      mod: {Cachetastic.Application, []},
       extra_applications: [:logger]
     ]
   end
 
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_), do: ["lib"]
+
   defp deps do
     [
-      {:redix, "~> 1.0"},
-      {:jason, "~> 1.2"},
+      {:redix, "~> 1.5"},
+      {:jason, "~> 1.4"},
+      {:telemetry, "~> 1.0"},
       {:ecto, "~> 3.6", only: :test, runtime: false},
       {:ecto_sql, "~> 3.6", only: :test, runtime: false},
       {:postgrex, ">= 0.0.0", only: :test, runtime: false},
       {:patch, "~> 0.12.0", only: :test, runtime: false},
-      {:ex_doc, "~> 0.23", only: :dev, runtime: false},
-      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
+      {:ex_doc, "~> 0.34", only: :dev, runtime: false},
+      {:credo, "~> 1.7.12", only: [:dev, :test], runtime: false}
     ]
   end
 
