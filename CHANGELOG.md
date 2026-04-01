@@ -45,7 +45,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - Elixir requirement bumped to `~> 1.14`
-- `Cachetastic.start_link/0` removed — app auto-starts via OTP
+- `start_link/0` removed — app auto-starts via OTP
 
 ## [0.1.3] - 2024-07-10
 
