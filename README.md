@@ -7,16 +7,19 @@
 ## Features
 
 - **Unified Interface**: Interact with different caching backends through a consistent API.
-- **OTP Supervision**: Backends run as supervised GenServers — no connection leaks.
+- **OTP Supervision**: Backends run as supervised processes — no connection leaks.
+- **Redis Connection Pool**: Pooled Redis connections via NimblePool for high concurrency.
 - **Fault Tolerance**: Automatic retries and fallback to a backup backend.
 - **ETS TTL**: Entries expire via lazy checks and periodic sweeps.
 - **Named Caches**: Run multiple isolated cache instances side by side.
-- **Fetch with Fallback**: Compute and cache on miss with `Cachetastic.fetch/2`.
+- **Fetch with Thundering Herd Protection**: Compute and cache on miss — only one process computes per key.
+- **Key Namespacing**: Automatic key prefixes to avoid collisions in shared Redis instances.
+- **Pattern-Based Invalidation**: Delete groups of keys by pattern (e.g. `"user:*"`).
 - **Telemetry**: Built-in events for all cache operations.
 - **Stats**: Track hits, misses, hit rate, and more.
 - **Configurable Serialization**: Pluggable serializers (JSON, Erlang term, or custom).
 - **Multi-Layer Caching**: L1 (ETS) + L2 (Redis) for fast local reads with remote persistence.
-- **Distributed Invalidation**: Pub/sub via Erlang `:pg` for cross-node cache invalidation.
+- **Distributed Invalidation**: Pub/sub via Erlang `:pg` or Redis Pub/Sub for cross-node cache invalidation.
 - **Ecto Integration**: Cache and retrieve Ecto query results seamlessly.
 
 ## Installation
@@ -26,7 +29,7 @@ Add `cachetastic` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:cachetastic, "~> 0.2.0"}
+    {:cachetastic, "~> 0.3.0"}
   ]
 end
 ```
@@ -42,11 +45,15 @@ Define the backends and fault tolerance configuration in `config/config.exs`:
 ```elixir
 import Config
 
+# Use the pooled Redis backend for production workloads
 config :cachetastic, :backends,
-  primary: :redis,
-  redis: [host: "localhost", port: 6379, ttl: 3600],
+  primary: :redis_pool,
+  redis_pool: [host: "localhost", port: 6379, pool_size: 10, ttl: 3600],
   ets: [ttl: 600],
-  fault_tolerance: [primary: :redis, backup: :ets]
+  fault_tolerance: [primary: :redis_pool, backup: :ets]
+
+# Optional: prefix all keys (useful when sharing a Redis instance)
+config :cachetastic, key_prefix: "myapp"
 ```
 
 Cachetastic starts automatically as an OTP application — no manual setup needed.
@@ -72,7 +79,8 @@ Cachetastic.clear()
 
 ### Fetch with Fallback
 
-Compute and cache a value on miss:
+Compute and cache a value on miss. Includes thundering herd protection — only one
+process computes the fallback for a given key, concurrent callers wait for the result:
 
 ```elixir
 {:ok, users} = Cachetastic.fetch("active_users", fn ->
@@ -100,6 +108,29 @@ Cachetastic.put(:api_cache, "endpoint:/users", response, 60)
 Cachetastic.clear(:sessions)  # does not affect :api_cache
 ```
 
+### Pattern-Based Invalidation
+
+Delete groups of keys by pattern (requires Redis/RedisPool backend):
+
+```elixir
+# Delete all user-related cache entries
+Cachetastic.delete_pattern("user:*")
+
+# Scoped to a named cache
+Cachetastic.delete_pattern(:api_cache, "v1:*")
+```
+
+### Key Namespacing
+
+Avoid key collisions when sharing a Redis instance between multiple apps:
+
+```elixir
+config :cachetastic, key_prefix: "myapp"
+
+# All keys are automatically prefixed: "myapp:user:123"
+Cachetastic.put("user:123", data)
+```
+
 ### Telemetry Events
 
 Cachetastic emits telemetry events for all operations:
@@ -115,6 +146,7 @@ Events emitted:
 - `[:cachetastic, :cache, :get, :result]` — with `%{result: :hit | :miss | :error}`
 - `[:cachetastic, :cache, :put]`
 - `[:cachetastic, :cache, :delete]`
+- `[:cachetastic, :cache, :delete_pattern]`
 - `[:cachetastic, :cache, :clear]`
 - `[:cachetastic, :cache, :fetch]`
 - `[:cachetastic, :cache, :fallback]`
@@ -149,6 +181,23 @@ defmodule MyApp.MsgpackSerializer do
 end
 
 config :cachetastic, serializer: MyApp.MsgpackSerializer
+```
+
+### Distributed Cache Invalidation
+
+#### Via Erlang `:pg` (BEAM clusters)
+
+```elixir
+config :cachetastic, pubsub: [adapter: Cachetastic.PubSub.PG]
+```
+
+#### Via Redis Pub/Sub (non-BEAM deployments)
+
+```elixir
+config :cachetastic, pubsub: [
+  adapter: Cachetastic.PubSub.RedisPubSub,
+  redis: [host: "localhost", port: 6379]
+]
 ```
 
 ### Ecto Integration

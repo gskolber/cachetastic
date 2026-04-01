@@ -7,6 +7,7 @@ defmodule Cachetastic.Application do
     children = [
       {Registry, keys: :unique, name: Cachetastic.Registry},
       {DynamicSupervisor, name: Cachetastic.BackendSupervisor, strategy: :one_for_one},
+      Cachetastic.Lock,
       Cachetastic.Stats
     ]
 
