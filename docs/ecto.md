@@ -11,7 +11,7 @@ Update your `mix.exs` file:
 ```elixir
 defp deps do
   [
-    {:cachetastic, "~> 0.2.0"},
+    {:cachetastic, "~> 1.0"},
     {:ecto, "~> 3.6"},
     {:ecto_sql, "~> 3.6"},
     {:postgrex, ">= 0.0.0"}
